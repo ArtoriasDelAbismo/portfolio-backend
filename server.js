@@ -14,9 +14,15 @@ app.use(cors({ origin: "*" }));
 app.options("*", cors({ origin: "*" }));
 app.use(json()); 
 
-const API_KEY = process.env.API_KEY;
+// prefer explicit env names and allow both for backward compat
+const API_KEY = process.env.API_KEY || process.env.RESEND_API_KEY;
+const FROM_EMAIL = process.env.FROM_EMAIL;
 const resend = new Resend(API_KEY);
 
+// health route for quick diagnostics
+app.get("/", (req, res) => {
+  res.json({ status: "ok", api_key_set: !!API_KEY, from: FROM_EMAIL });
+});
 
 app.post("/send-email", async (req, res) => {
   const { name, email, message, subject } = req.body;
@@ -27,11 +33,16 @@ app.post("/send-email", async (req, res) => {
       .json({ status: "error", message: "All fields are required." });
   }
 
+  if (!API_KEY) {
+    console.error("Missing Resend API key (set API_KEY or RESEND_API_KEY)");
+    return res.status(500).json({ status: "error", message: "Server misconfigured" });
+  }
+
   try {
-    // use Resend SDK instead of manual fetch
     const result = await resend.emails.send({
-      from: 'Acme <onboarding@resend.dev>',
+      from: FROM_EMAIL,
       to: ['jerojournade1@gmail.com'],
+      replyTo: email,
       subject: `Contact Form Submission: ${subject}`,
       html: `<p><strong>Name:</strong> ${name}</p>
              <p><strong>Email:</strong> ${email}</p>
@@ -39,7 +50,6 @@ app.post("/send-email", async (req, res) => {
              <p>${message}</p>`,
     });
 
-    // resend.emails.send returns data object on success
     return res.status(200).json({
       status: "success",
       message: "Message sent successfully!",
@@ -47,7 +57,6 @@ app.post("/send-email", async (req, res) => {
     });
   } catch (error) {
     console.error("Error sending email via Resend:", error);
-    // surface useful error info to logs, but keep client response generic
     return res.status(500).json({
       status: "error",
       message: "Error sending message",
