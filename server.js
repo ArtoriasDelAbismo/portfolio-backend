@@ -15,7 +15,7 @@ app.options("*", cors({ origin: "*" }));
 app.use(json()); 
 
 // prefer explicit env names and allow both for backward compat
-const API_KEY = process.env.API_KEY || process.env.RESEND_API_KEY;
+const API_KEY = process.env.API_KEY;
 const FROM_EMAIL = process.env.FROM_EMAIL;
 const resend = new Resend(API_KEY);
 
@@ -34,7 +34,7 @@ app.post("/send-email", async (req, res) => {
   }
 
   if (!API_KEY) {
-    console.error("Missing Resend API key (set API_KEY or RESEND_API_KEY)");
+    console.error("Missing Resend API key (set API_KEY))");
     return res.status(500).json({ status: "error", message: "Server misconfigured" });
   }
 
