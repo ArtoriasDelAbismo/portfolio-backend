@@ -2,68 +2,57 @@ import express, { json } from "express";
 import fetch from "node-fetch";
 import cors from "cors"; 
 import dotenv from "dotenv";
+import { Resend } from "resend";
 
 dotenv.config();
 const app = express();
-const PORT = process.env.PORT;
+// fallback port for local testing
+const PORT = process.env.PORT || 3000;
 
-app.use(cors({ origin:"*" })); 
+app.use(cors({ origin: "*" })); 
+// allow preflight for all routes
+app.options("*", cors({ origin: "*" }));
 app.use(json()); 
 
 const API_KEY = process.env.API_KEY;
+const resend = new Resend(API_KEY);
+
 
 app.post("/send-email", async (req, res) => {
-  const { name, email, message } = req.body;
+  const { name, email, message, subject } = req.body;
 
-  if (!name || !email || !message) {
+  if (!name || !email || !message || !subject) {
     return res
       .status(400)
       .json({ status: "error", message: "All fields are required." });
   }
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        from: 'onboarding@resend.dev',
-        to: "jerojournade1@gmail.com",
-        subject: `Contact Form Submission: ${name}`,
-        html: `<p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><p><strong>Message:</strong><p>${message}</p>`,
-      }),
+    // use Resend SDK instead of manual fetch
+    const result = await resend.emails.send({
+      from: 'Acme <onboarding@resend.dev>',
+      to: ['jerojournade1@gmail.com'],
+      subject: `Contact Form Submission: ${subject}`,
+      html: `<p><strong>Name:</strong> ${name}</p>
+             <p><strong>Email:</strong> ${email}</p>
+             <p><strong>Message:</strong></p>
+             <p>${message}</p>`,
     });
 
-    if (response.ok) {
-      res
-        .status(200)
-        .json({ status: "success", message: "Message sent successfully!" });
-    } else {
-      const errorData = await response.json();
-      res
-        .status(500)
-        .json({
-          status: "error",
-          message: errorData.error || "Error sending message",
-        });
-    }
+    // resend.emails.send returns data object on success
+    return res.status(200).json({
+      status: "success",
+      message: "Message sent successfully!",
+      data: result,
+    });
   } catch (error) {
-    console.error("Error sending email:", error.message);
-  
-    if (error.response) {
-      try {
-        const errorData = await error.response.json();
-        console.error("Resend API Response:", errorData);
-      } catch (jsonError) {
-        console.error("Could not parse error response as JSON.");
-      }
-    } else {
-      console.error("No response received from Resend API.");
-    }
-  
-    res.status(500).json({ status: 'error', message: 'Error sending message' });
+    console.error("Error sending email via Resend:", error);
+    // surface useful error info to logs, but keep client response generic
+    return res.status(500).json({
+      status: "error",
+      message: "Error sending message",
+      error: (error && error.message) ? error.message : undefined,
+    });
   }
 });
 
